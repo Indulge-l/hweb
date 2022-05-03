@@ -16,7 +16,9 @@ type Context struct {
 	request        *http.Request
 	responseWriter http.ResponseWriter
 	ctx            context.Context
-	handler        ControllerHandler
+
+	handlers []ControllerHandler
+	index    int
 
 	hasTimeout bool
 	// 写保护机制
@@ -29,7 +31,18 @@ func NewContext(req *http.Request, resp http.ResponseWriter) *Context {
 		responseWriter: resp,
 		ctx:            req.Context(),
 		writerMux:      &sync.Mutex{},
+		index:          -1,
 	}
+}
+
+func (ctx *Context) Next() error {
+	ctx.index++
+	if ctx.index < len(ctx.handlers) {
+		if err := ctx.handlers[ctx.index](ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // base
@@ -57,6 +70,11 @@ func (ctx *Context) BaseContext() context.Context {
 	return ctx.request.Context()
 }
 
+func (ctx *Context) SetHandlers(handlers []ControllerHandler) {
+	ctx.handlers = handlers
+}
+
+//  #region Context interface
 func (ctx *Context) Deadline() (deadline time.Time, ok bool) {
 	return ctx.BaseContext().Deadline()
 }
@@ -73,7 +91,9 @@ func (ctx *Context) Value(key interface{}) interface{} {
 	return ctx.BaseContext().Value(key)
 }
 
-//  #region query url
+// #endregion
+
+// #region query url
 
 func (ctx *Context) QueryInt(key string, def int) int {
 	params := ctx.QueryAll()
